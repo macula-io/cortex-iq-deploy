@@ -1,0 +1,7 @@
+# Placeholder file for application manifests
+#
+# This directory will contain:
+# - cortex-iq-simulation.yaml
+# - cortex-iq-projections.yaml
+# - cortex-iq-queries.yaml
+# - cortex-iq-dashboard.yaml

@@ -1,0 +1,11 @@
+# Placeholder file for shared Kustomize bases
+#
+# This directory will contain shared manifests that can be reused across clusters:
+# - macula-gateway/ - Gateway service base configuration
+# - postgres/ - PostgreSQL base configuration
+# - cortex-iq-simulation/ - Simulation app base
+# - cortex-iq-homes/ - Homes app base
+# - cortex-iq-utilities/ - Utilities app base
+# - cortex-iq-projections/ - Projections app base
+# - cortex-iq-queries/ - Queries app base
+# - cortex-iq-dashboard/ - Dashboard app base

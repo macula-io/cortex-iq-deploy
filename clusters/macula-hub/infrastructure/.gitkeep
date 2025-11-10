@@ -1,0 +1,6 @@
+# Placeholder file for infrastructure manifests
+#
+# This directory will contain:
+# - namespace.yaml
+# - postgresql.yaml
+# - macula-gateway-service.yaml
