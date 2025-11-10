@@ -4,16 +4,54 @@ This document describes the deployment architecture for CortexIQ on local KinD (
 
 ## Overview
 
-CortexIQ is deployed across 4 KinD clusters representing a hub-and-spoke topology:
-- **1 Hub Cluster**: `macula-hub` (centralized services: Dashboard, Projections, Queries, Simulation)
-- **3 Edge Clusters**: Belgian regions running distributed edge workloads (Homes, Utilities)
-  - `be-antwerp` - Antwerp region
-  - `be-brabant` - Brabant region
-  - `be-east-flanders` - East Flanders region
+CortexIQ is deployed across **4 KinD clusters** in a **fully connected mesh topology**:
+
+- **macula-hub** - Centralized services cluster
+  - Dashboard (Phoenix LiveView UI)
+  - Projections (event processing to read models)
+  - Queries (RPC query handlers)
+  - Simulation (time clock broadcast)
+  - PostgreSQL (read model database)
+  - **Macula Gateway** (participates in mesh)
+
+- **be-antwerp** - Antwerp region cluster
+  - Homes (regional home simulation bots)
+  - Utilities (regional energy provider bots)
+  - **Macula Gateway** (participates in mesh)
+
+- **be-brabant** - Brabant region cluster
+  - Homes (regional home simulation bots)
+  - Utilities (regional energy provider bots)
+  - **Macula Gateway** (participates in mesh)
+
+- **be-east-flanders** - East Flanders region cluster
+  - Homes (regional home simulation bots)
+  - Utilities (regional energy provider bots)
+  - **Macula Gateway** (participates in mesh)
+
+### Key Architectural Principles
+
+**Full Mesh Network**:
+- All 4 Macula Gateways are connected to each other in a ring topology
+- No hub-and-spoke - all gateways are peers
+- Messages published in one cluster propagate to all others automatically
+- Forms ONE virtual realm (`be.cortexiq.energy`) spanning 4 physical clusters
+
+**Cross-Cluster Communication**:
+- A home in Antwerp can see contract offers from providers in Brabant
+- Dashboard in macula-hub receives events from homes in all 3 regions
+- Simulation clock in macula-hub broadcasts to all homes/utilities across all regions
+- All via HTTP/3 (QUIC) transport through the gateway mesh
+
+**Cluster Roles**:
+- **macula-hub**: Logical "hub" for centralized services (NOT a gateway hub)
+  - Runs shared services: Dashboard, DB, Projections, Queries, Simulation
+  - Gateway participates as peer in mesh (not central router)
+- **Regional clusters**: Run region-specific workloads
+  - Homes and Utilities for that region
+  - Gateway participates as peer in mesh
 
 All clusters use **FluxCD** for GitOps-based continuous deployment from this repository (`cortex-iq-deploy`).
-
-The architecture uses HTTP/3 (QUIC) transport via Macula Gateway. Each cluster has a single gateway process that all applications connect to as clients.
 
 ## Cluster Infrastructure
 
@@ -104,60 +142,164 @@ kubectl --context kind-macula-hub delete pods -n cortex-iq -l app=cortex-iq-dash
 
 ## Architecture Diagram
 
-### Hub Cluster (macula-hub)
+### Full Mesh Network Topology
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                     4-Cluster Full Mesh Network                        │
+│                     Realm: be.cortexiq.energy                          │
+│                                                                         │
+│                                                                         │
+│                         macula-hub                                     │
+│                     ┌──────────────────┐                               │
+│                     │  Gateway :9443   │◄─────────┐                    │
+│                     │  (mesh peer)     │          │                    │
+│                     └────────┬─────────┘          │                    │
+│                              │                    │                    │
+│                   ┌──────────┼─────────┐          │                    │
+│                   │          │         │          │                    │
+│                   ▼          ▼         ▼          │                    │
+│             ┌──────────┬────────┬──────────┐      │                    │
+│             │Dashboard │Proj/Qry│Simulation│      │                    │
+│             └──────────┴───┬────┴──────────┘      │                    │
+│                            │                      │                    │
+│                            ▼                      │                    │
+│                       PostgreSQL                  │                    │
+│                                                   │                    │
+│         ┌─────────────────────────────────────────┘                    │
+│         │                                                              │
+│         │                                                              │
+│    ┌────▼──────────┐                         ┌────────────────┐       │
+│    │  be-antwerp   │                         │ be-east-flanders│      │
+│    │               │                         │                │      │
+│    │ Gateway :9443 │◄───────────────────────►│ Gateway :9443  │      │
+│    │ (mesh peer)   │                         │ (mesh peer)    │      │
+│    └───────┬───────┘                         └───────┬────────┘       │
+│            │                                         │                │
+│       ┌────┴─────┐                              ┌────┴─────┐          │
+│       │          │                              │          │          │
+│       ▼          ▼                              ▼          ▼          │
+│    ┌──────┬──────────┐                      ┌──────┬──────────┐      │
+│    │Homes │Utilities │                      │Homes │Utilities │      │
+│    └──────┴──────────┘                      └──────┴──────────┘      │
+│            │                                         │                │
+│            │                                         │                │
+│            │          ┌─────────────┐                │                │
+│            │          │ be-brabant  │                │                │
+│            │          │             │                │                │
+│            └─────────►│Gateway :9443│◄───────────────┘                │
+│                       │(mesh peer)  │                                 │
+│                       └──────┬──────┘                                 │
+│                              │                                        │
+│                         ┌────┴─────┐                                  │
+│                         │          │                                  │
+│                         ▼          ▼                                  │
+│                     ┌──────┬──────────┐                               │
+│                     │Homes │Utilities │                               │
+│                     └──────┴──────────┘                               │
+│                                                                         │
+│  All 4 gateways form a RING - fully connected mesh                    │
+│  Each gateway connects to all 3 others (6 total connections)          │
+│  Any application in any cluster can communicate with any other        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Message Flow Example
+
+```
+Home in Antwerp publishes energy measurement:
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                 │
+│  1. Home (Antwerp) → Gateway (Antwerp)                         │
+│     Topic: "be.cortexiq.home.measured"                         │
+│     Payload: {home_id: "ant_001", production_w: 3500, ...}     │
+│                                                                 │
+│  2. Gateway (Antwerp) → All other gateways via mesh            │
+│     ├─→ Gateway (Brabant)                                      │
+│     ├─→ Gateway (East Flanders)                                │
+│     └─→ Gateway (macula-hub)                                   │
+│                                                                 │
+│  3. Applications subscribed to "be.cortexiq.home.*" receive:   │
+│     ├─ Dashboard (macula-hub) ✓                                │
+│     ├─ Projections (macula-hub) ✓                              │
+│     └─ Any other subscriber in any cluster ✓                   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+Provider in Brabant publishes contract offer:
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                 │
+│  1. Provider (Brabant) → Gateway (Brabant)                     │
+│     Topic: "be.cortexiq.provider.contract.offered"             │
+│     Payload: {provider_id: "bra_p01", day_price: 0.15, ...}    │
+│                                                                 │
+│  2. Gateway (Brabant) → All other gateways via mesh            │
+│     ├─→ Gateway (Antwerp)                                      │
+│     ├─→ Gateway (East Flanders)                                │
+│     └─→ Gateway (macula-hub)                                   │
+│                                                                 │
+│  3. Homes subscribed to "be.cortexiq.provider.*" receive:      │
+│     ├─ Homes in Antwerp ✓ (cross-region!)                     │
+│     ├─ Homes in Brabant ✓                                     │
+│     ├─ Homes in East Flanders ✓ (cross-region!)               │
+│     └─ Dashboard (macula-hub) ✓                                │
+│                                                                 │
+│  Result: Home in Antwerp can switch to provider in Brabant!    │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Individual Cluster Details
+
+#### macula-hub Cluster
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  macula-hub Cluster (KinD)                                   │
+│  macula-hub (KinD)                                           │
 │                                                               │
 │  ┌────────────────────────────────────────────────────────┐  │
-│  │  Macula Gateway Service                                 │  │
-│  │  - Port: 9443 (internal), 30080 (host)                 │  │
+│  │  Macula Gateway                                         │  │
+│  │  - Port: 9443 (internal), 30080 (host/QUIC)           │  │
 │  │  - Realm: be.cortexiq.energy                           │  │
-│  │  - Image: registry.macula.local:5000/macula/           │  │
-│  │           macula-gateway-service:latest                │  │
+│  │  - Mesh Peers: be-antwerp, be-brabant, be-east-flanders│ │
 │  └─────────────────┬──────────────────────────────────────┘  │
-│                    │                                          │
+│                    │ (local connections)                      │
 │        ┌───────────┼──────────┬────────────┬──────────┐      │
-│        │           │          │            │          │      │
 │        ▼           ▼          ▼            ▼          ▼      │
 │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌──────┐              │
 │  │ Simul-  │ │Projec-  │ │Queries  │ │Dash- │              │
 │  │ ation   │ │ tions   │ │         │ │board │              │
-│  └─────────┘ └─────────┘ └─────────┘ └──────┘              │
-│                                          │                    │
-│  ┌───────────────────────────────────────┘                   │
-│  │                                                            │
-│  ▼                                                            │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │ PostgreSQL                                               │  │
-│  │ - Port: 5432                                            │  │
-│  │ - Database: cortex_iq_dashboard                         │  │
-│  └─────────────────────────────────────────────────────────┘  │
+│  └─────────┘ └─────────┘ └─────────┘ └──┬───┘              │
+│                   │                      │                   │
+│                   ▼                      │                   │
+│  ┌─────────────────────────────────┐    │                   │
+│  │ PostgreSQL                       │◄───┘                   │
+│  │ - Port: 5432                    │                        │
+│  │ - Database: cortex_iq_dashboard │                        │
+│  └─────────────────────────────────┘                        │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### Edge Clusters (be-antwerp, be-brabant, be-east-flanders)
+#### Regional Cluster (be-antwerp, be-brabant, be-east-flanders)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  Edge Cluster (KinD)                                         │
+│  be-[region] (KinD)                                          │
 │                                                               │
 │  ┌────────────────────────────────────────────────────────┐  │
-│  │  Macula Gateway Service                                 │  │
-│  │  - Port: 9443                                           │  │
+│  │  Macula Gateway                                         │  │
+│  │  - Port: 9443 (internal)                               │  │
 │  │  - Realm: be.cortexiq.energy                           │  │
-│  │  - Image: registry.macula.local:5000/macula/           │  │
-│  │           macula-gateway-service:latest                │  │
-│  │  - Connects to hub gateway for mesh                    │  │
+│  │  - Mesh Peers: macula-hub, other 2 regions            │  │
 │  └─────────────────┬──────────────────────────────────────┘  │
-│                    │                                          │
+│                    │ (local connections)                      │
 │        ┌───────────┴──────────┐                               │
-│        │                      │                               │
 │        ▼                      ▼                               │
 │  ┌─────────┐           ┌─────────┐                           │
 │  │ Homes   │           │Utilities│                           │
 │  │         │           │         │                           │
+│  │ Regional│           │ Regional│                           │
+│  │ Bots    │           │ Bots    │                           │
 │  └─────────┘           └─────────┘                           │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -170,16 +312,34 @@ kubectl --context kind-macula-hub delete pods -n cortex-iq -l app=cortex-iq-dash
 
 **Image**: `registry.macula.local:5000/macula/macula-gateway-service:latest`
 
-**Purpose**: Gateway that all applications connect to for pub/sub and RPC
+**Purpose**: Gateway that all local applications connect to for pub/sub and RPC. Forms mesh ring with other gateways.
 
 **Environment Variables**:
-- `MACULA_GATEWAY_PORT=9443` - Port to listen on
-- `MACULA_REALM=be.cortexiq.energy` - Realm name
-- `HUB_GATEWAY_URL` (edge only) - URL to hub gateway for mesh connectivity
+- `MACULA_GATEWAY_PORT=9443` - Port to listen on (QUIC/HTTP3)
+- `MACULA_REALM=be.cortexiq.energy` - Realm name (all clusters use same realm)
+- `MESH_PEERS` - Comma-separated list of other gateway URLs for mesh ring
+  - Example: `https://gateway-antwerp:9443,https://gateway-brabant:9443,https://gateway-efl:9443`
 
 **Deployment**:
-- Hub: Standalone gateway, accepts edge connections
-- Edge: Gateway that connects to hub for inter-cluster communication
+- **All clusters are peers** - no hub/spoke hierarchy
+- Each gateway connects to ALL other gateways (full mesh)
+- Messages published to one gateway propagate to all others automatically
+- Gateway mesh forms ONE virtual realm spanning all physical clusters
+
+**Network Configuration**:
+- **macula-hub**: Port 30080 exposed to host (for external testing)
+- **Regional clusters**: Port 9443 internal only (cluster-to-cluster via Kubernetes service mesh)
+
+**Mesh Ring Topology**:
+```
+Gateway connections (6 total for 4 gateways):
+1. macula-hub ↔ be-antwerp
+2. macula-hub ↔ be-brabant
+3. macula-hub ↔ be-east-flanders
+4. be-antwerp ↔ be-brabant
+5. be-antwerp ↔ be-east-flanders
+6. be-brabant ↔ be-east-flanders
+```
 
 #### 2. PostgreSQL (Hub Only)
 
@@ -435,45 +595,79 @@ psql -h localhost -U postgres -d cortex_iq_dashboard
 - **Before**: `BONDY_URL`, `BONDY_REALM`, `BONDY_ADMIN_URL`
 - **After**: `MACULA_URL`, `MACULA_REALM`
 
-## Multi-Region Architecture
+## Multi-Region Full Mesh Architecture
 
-The current setup demonstrates a hub-and-spoke multi-region architecture:
+The deployment demonstrates a **fully connected mesh** multi-region architecture:
 
 ```
-macula-hub (Hub)                             Registry
-┌─────────────────────┐                    ┌──────────────────┐
-│ Gateway (port 30080)│◄───────────────────│ macula-registry  │
-│ Realm: be.cortexiq  │                    │ :5000            │
-│     ↕               │                    └───────┬──────────┘
-│ Apps:               │                            │
-│ • Simulation        │                            │ Pull images
-│ • Projections       │                            │
-│ • Queries           │                            ▼
-│ • Dashboard         │        ┌────────────────────────────────┐
-│ • PostgreSQL        │        │ All clusters configured to pull │
-└──────┬──┬──┬────────┘        │ from registry.macula.local:5000│
-       │  │  │                 └────────────────────────────────┘
-       │  │  │ Mesh connectivity (QUIC)
-       │  │  │
-   ┌───┘  │  └───┐
-   │      │      │
-   ▼      ▼      ▼
-┌────┐ ┌────┐ ┌────┐
-│Ant-│ │Bra-│ │EFL │  (Edge Clusters)
-│werp│ │bant│ │    │
-│    │ │    │ │    │
-│ GW │ │ GW │ │ GW │  (Each has gateway)
-│ ↕  │ │ ↕  │ │ ↕  │
-│Homes││Homes││Homes│ (Regional workloads)
-│Utils││Utils││Utils│
-└────┘ └────┘ └────┘
+Container Registry                    4-Cluster Full Mesh Network
+┌──────────────────┐
+│ macula-registry  │                  All clusters pull images
+│ :5000            │◄─────────────────from registry
+└──────────────────┘
+                                      ┌─────────────────────────┐
+                                      │ Realm: be.cortexiq.energy│
+                                      │ (ONE virtual realm)      │
+                                      └─────────────────────────┘
+
+     macula-hub
+   ┌─────────────┐                         MESH RING
+   │  Gateway    │──────────┐              (HTTP/3/QUIC)
+   │  :9443      │          │
+   └──────┬──────┘          │              All gateways
+          │                 │              connected to
+          ▼                 │              all others
+    ┌──────────┐            │
+    │Dashboard │            │              Messages published
+    │Proj/Query│            │              in ANY cluster
+    │Simulation│            │              propagate to
+    │PostgreSQL│            │              ALL clusters
+    └──────────┘            │
+                            │
+         ┌──────────────────┼───────────────────┐
+         │                  │                   │
+         ▼                  ▼                   ▼
+    be-antwerp         be-brabant      be-east-flanders
+   ┌──────────┐       ┌──────────┐     ┌──────────┐
+   │ Gateway  │◄─────►│ Gateway  │◄───►│ Gateway  │
+   │ :9443    │       │ :9443    │     │ :9443    │
+   └────┬─────┘       └────┬─────┘     └────┬─────┘
+        │                  │                 │
+        ▼                  ▼                 ▼
+   ┌─────────┐        ┌─────────┐      ┌─────────┐
+   │  Homes  │        │  Homes  │      │  Homes  │
+   │Utilities│        │Utilities│      │Utilities│
+   └─────────┘        └─────────┘      └─────────┘
 ```
 
-**Gateway Bridging**:
-- Hub gateway accepts connections from edge gateways
-- Edge applications publish/subscribe locally
-- Gateway mesh forwards messages between clusters
-- Enables cross-region pub/sub and RPC
+**Mesh Network Properties**:
+- **No central hub** - all gateways are equal peers
+- **Full connectivity** - each gateway connects to all 3 others (6 total connections)
+- **Automatic propagation** - messages published anywhere reach all subscribers everywhere
+- **Realm unification** - ONE virtual realm `be.cortexiq.energy` spanning 4 physical clusters
+- **HTTP/3 (QUIC)** - NAT-friendly, firewall-friendly transport between gateways
+
+**Cross-Region Communication Examples**:
+1. **Provider in Brabant → Home in Antwerp**:
+   - Provider publishes contract offer to local gateway (Brabant)
+   - Gateway mesh propagates to all clusters
+   - Home in Antwerp receives offer and can switch providers
+
+2. **Home in any region → Dashboard in macula-hub**:
+   - Home publishes measurement to local gateway
+   - Gateway mesh propagates to macula-hub
+   - Dashboard receives and displays real-time data
+
+3. **Simulation in macula-hub → All homes in all regions**:
+   - Simulation publishes time tick to local gateway
+   - Gateway mesh propagates to all regional clusters
+   - All homes advance simulation time synchronously
+
+**Why "macula-hub" if it's not a hub?**
+- **Logical role**, not architectural role
+- Hosts **shared services**: Dashboard, Projections, Queries, Simulation, PostgreSQL
+- Gateway participates in mesh **as a peer**, not as a central router
+- Could be renamed to "macula-services" for clarity, but "hub" reflects its logical purpose
 
 ## References
 
