@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: macula-gateway
+  namespace: macula-system
+  labels:
+    app: macula-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: macula-gateway
+  template:
+    metadata:
+      labels:
+        app: macula-gateway
+    spec:
+      containers:
+      - name: gateway
+        image: macula/macula-gateway:latest
+        imagePullPolicy: Never
+        ports:
+        - name: quic
+          containerPort: 9443
+          protocol: UDP
+        - name: http
+          containerPort: 9443
+          protocol: TCP
+        env:
+        - name: GATEWAY_PORT
+          value: "9443"
+        - name: GATEWAY_REALM
+          value: "be.cortexiq.energy"
+        - name: RELEASE_COOKIE
+          value: "macula-gateway-cookie"
+        - name: RELEASE_NODE
+          value: "gateway@127.0.0.1"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          tcpSocket:
+            port: 9443
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 9443
+          initialDelaySeconds: 10
+          periodSeconds: 5
