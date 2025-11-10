@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cortex-iq-simulation
+  namespace: cortex-iq
+  labels:
+    app: cortex-iq-simulation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cortex-iq-simulation
+  template:
+    metadata:
+      labels:
+        app: cortex-iq-simulation
+    spec:
+      containers:
+      - name: simulation
+        image: registry.macula.local:5000/macula/cortex-iq-simulation:latest
+        imagePullPolicy: Always
+        env:
+        - name: MACULA_URL
+          value: "https://macula-gateway.macula-system.svc.cluster.local:9443"
+        - name: MACULA_REALM
+          value: "be.cortexiq.energy"
+        - name: RELEASE_COOKIE
+          value: "cortex-iq-cookie"
+        - name: RELEASE_NODE
+          value: "simulation@127.0.0.1"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
