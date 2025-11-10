@@ -36,22 +36,20 @@ flux reconcile kustomization infrastructure --context kind-macula-hub
 
 ### Prometheus UI
 ```bash
-# Via NodePort (macula-hub cluster)
-http://localhost:30090
-
-# Or via port-forward
+# Via port-forward (KinD clusters)
 kubectl --context kind-macula-hub port-forward -n observability svc/prometheus 9090:9090
-http://localhost:9090
+# Then access: http://localhost:9090
+
+# Note: NodePort 30090 is configured but requires KinD cluster port mappings to be accessible on host
 ```
 
 ### Grafana UI
 ```bash
-# Via NodePort (macula-hub cluster)
-http://localhost:30300
-
-# Or via port-forward
+# Via port-forward (KinD clusters)
 kubectl --context kind-macula-hub port-forward -n observability svc/grafana 3000:3000
-http://localhost:3000
+# Then access: http://localhost:3000
+
+# Note: NodePort 30300 is configured but requires KinD cluster port mappings to be accessible on host
 ```
 
 **Default Credentials**: admin/admin (anonymous login enabled - no password needed)

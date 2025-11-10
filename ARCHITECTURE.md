@@ -2,6 +2,24 @@
 
 This document describes the deployment architecture for CortexIQ on local KinD (Kubernetes in Docker) clusters using GitOps with FluxCD.
 
+## Documentation Index
+
+**Core Architecture:**
+- [ARCHITECTURE.md](./ARCHITECTURE.md) *(this file)* - Overall deployment architecture and mesh topology
+- [DNS_STRATEGY.md](./DNS_STRATEGY.md) - DNS resolution strategy for KinD and beam clusters
+
+**Infrastructure Components:**
+- [base/observability/README.md](./base/observability/README.md) - Prometheus + Grafana observability stack
+- [base/registry/README.md](./base/registry/README.md) - Local Docker registry setup
+
+**Scripts:**
+- [scripts/create-belgian-clusters.sh](./scripts/create-belgian-clusters.sh) - Create 4 KinD clusters
+- [scripts/configure-flux-gitops.sh](./scripts/configure-flux-gitops.sh) - Configure FluxCD on all clusters
+- [scripts/connect-registry.sh](./scripts/connect-registry.sh) - Connect registry to KinD clusters
+
+**Deployment Process:**
+- See [README.md](./README.md) - Quick start guide and deployment workflow
+
 ## Overview
 
 CortexIQ is deployed across **4 KinD clusters** in a **fully connected mesh topology**:
