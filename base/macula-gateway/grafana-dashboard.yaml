@@ -1,0 +1,243 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: macula-gateway-dashboard
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  macula-gateway.json: |
+    {
+      "dashboard": {
+        "title": "Macula Gateway",
+        "tags": ["macula", "gateway", "http3"],
+        "timezone": "browser",
+        "schemaVersion": 16,
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Gateway Status",
+            "type": "stat",
+            "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+            "targets": [
+              {
+                "expr": "macula_gateway_ready",
+                "legendFormat": "Ready Status"
+              }
+            ],
+            "options": {
+              "colorMode": "value",
+              "graphMode": "none",
+              "justifyMode": "center",
+              "orientation": "auto"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"value": 0, "color": "red"},
+                    {"value": 1, "color": "green"}
+                  ]
+                },
+                "mappings": [
+                  {"type": "value", "value": "0", "text": "Not Ready"},
+                  {"type": "value", "value": "1", "text": "Ready"}
+                ]
+              }
+            }
+          },
+          {
+            "id": 2,
+            "title": "Uptime",
+            "type": "stat",
+            "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+            "targets": [
+              {
+                "expr": "macula_gateway_uptime_seconds",
+                "legendFormat": "Uptime"
+              }
+            ],
+            "options": {
+              "colorMode": "value",
+              "graphMode": "area",
+              "justifyMode": "center"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s",
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"value": 0, "color": "red"},
+                    {"value": 60, "color": "yellow"},
+                    {"value": 300, "color": "green"}
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "id": 3,
+            "title": "Diagnostics Service",
+            "type": "stat",
+            "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+            "targets": [
+              {
+                "expr": "macula_gateway_diagnostics_available",
+                "legendFormat": "Diagnostics"
+              }
+            ],
+            "options": {
+              "colorMode": "value",
+              "graphMode": "none"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"value": 0, "color": "red"},
+                    {"value": 1, "color": "green"}
+                  ]
+                },
+                "mappings": [
+                  {"type": "value", "value": "0", "text": "Unavailable"},
+                  {"type": "value", "value": "1", "text": "Available"}
+                ]
+              }
+            }
+          },
+          {
+            "id": 4,
+            "title": "Connected Clients",
+            "type": "stat",
+            "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+            "targets": [
+              {
+                "expr": "macula_gateway_clients_total",
+                "legendFormat": "Clients"
+              }
+            ],
+            "options": {
+              "colorMode": "value",
+              "graphMode": "area"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short",
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"value": 0, "color": "blue"},
+                    {"value": 10, "color": "green"},
+                    {"value": 50, "color": "yellow"}
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "id": 5,
+            "title": "Memory Usage",
+            "type": "graph",
+            "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+            "targets": [
+              {
+                "expr": "macula_gateway_memory_bytes / 1024 / 1024",
+                "legendFormat": "Total Memory (MB)"
+              },
+              {
+                "expr": "macula_gateway_process_memory_bytes / 1024 / 1024",
+                "legendFormat": "Process Memory (MB)"
+              }
+            ],
+            "yaxes": [
+              {"format": "mbytes", "label": "Memory"},
+              {"format": "short"}
+            ],
+            "lines": true,
+            "fill": 1,
+            "linewidth": 2,
+            "legend": {
+              "show": true,
+              "values": true,
+              "current": true,
+              "max": true,
+              "avg": true
+            }
+          },
+          {
+            "id": 6,
+            "title": "Erlang Processes",
+            "type": "graph",
+            "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+            "targets": [
+              {
+                "expr": "macula_gateway_process_count",
+                "legendFormat": "Process Count"
+              }
+            ],
+            "yaxes": [
+              {"format": "short", "label": "Processes"},
+              {"format": "short"}
+            ],
+            "lines": true,
+            "fill": 1,
+            "linewidth": 2,
+            "legend": {
+              "show": true,
+              "values": true,
+              "current": true,
+              "max": true,
+              "avg": true
+            }
+          },
+          {
+            "id": 7,
+            "title": "Gateway Activity",
+            "type": "graph",
+            "gridPos": {"x": 0, "y": 12, "w": 24, "h": 8},
+            "targets": [
+              {
+                "expr": "macula_gateway_clients_total",
+                "legendFormat": "Connected Clients"
+              },
+              {
+                "expr": "macula_gateway_subscriptions_total",
+                "legendFormat": "Active Subscriptions"
+              },
+              {
+                "expr": "macula_gateway_registrations_total",
+                "legendFormat": "Registered Procedures"
+              }
+            ],
+            "yaxes": [
+              {"format": "short", "label": "Count"},
+              {"format": "short"}
+            ],
+            "lines": true,
+            "fill": 1,
+            "linewidth": 2,
+            "legend": {
+              "show": true,
+              "values": true,
+              "current": true,
+              "max": true,
+              "avg": true,
+              "alignAsTable": true,
+              "rightSide": false
+            },
+            "tooltip": {
+              "shared": true,
+              "value_type": "individual"
+            }
+          }
+        ]
+      }
+    }

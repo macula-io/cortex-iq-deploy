@@ -14,6 +14,10 @@ spec:
     metadata:
       labels:
         app: macula-gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: gateway
@@ -23,14 +27,16 @@ spec:
         - name: quic
           containerPort: 9443
           protocol: UDP
-        - name: http
-          containerPort: 9443
+        - name: health
+          containerPort: 8080
           protocol: TCP
         env:
         - name: GATEWAY_PORT
           value: "9443"
         - name: GATEWAY_REALM
           value: "be.cortexiq.energy"
+        - name: HEALTH_PORT
+          value: "8080"
         - name: RELEASE_COOKIE
           value: "macula-gateway-cookie"
         - name: RELEASE_NODE
@@ -43,12 +49,18 @@ spec:
             memory: "4Gi"
             cpu: "1000m"
         livenessProbe:
-          tcpSocket:
-            port: 9443
+          httpGet:
+            path: /live
+            port: 8080
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
-          tcpSocket:
-            port: 9443
+          httpGet:
+            path: /ready
+            port: 8080
           initialDelaySeconds: 10
           periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3

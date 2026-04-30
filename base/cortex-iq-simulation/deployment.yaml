@@ -17,8 +17,8 @@ spec:
     spec:
       containers:
       - name: simulation
-        image: registry.macula.local:5000/macula/cortex-iq-simulation:latest
-        imagePullPolicy: Always
+        image: macula/cortex-iq-simulation:latest
+        imagePullPolicy: Never
         env:
         - name: MACULA_URL
           value: "https://macula-gateway.macula-system.svc.cluster.local:9443"
@@ -30,8 +30,8 @@ spec:
           value: "simulation@127.0.0.1"
         resources:
           requests:
-            memory: "128Mi"
+            memory: "512Mi"
             cpu: "100m"
           limits:
-            memory: "256Mi"
-            cpu: "500m"
+            memory: "1Gi"
+            cpu: "1000m"
