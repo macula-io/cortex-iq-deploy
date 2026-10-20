@@ -1,0 +1,60 @@
+name: ci
+
+# Shellcheck on every push to a branch and every pull request.
+#
+# THIS REPOSITORY HAD NO CI. It is nine scripts that create and configure KinD
+# clusters, install Flux and deploy the platform. Nothing checked that they still
+# parse, so the fourteen shellcheck findings below were found by running them.
+#
+# The fourteen are fixed in the same change, and three of them were a real bug
+# rather than style: in deploy-complete.sh three `kubectl wait` invocations had
+# lost their first line, so what remained was a continuation beginning `-l
+# app=postgres`. That line runs `-l` as a command, fails, and reports the pod as
+# not ready. The PostgreSQL, Dashboard and Homes waits on edge-01 therefore
+# always failed, on a script whose job is to report whether a deployment is
+# ready. Each one now names its context again.
+#
+# The rest: seven unused colour variables and two unused SCRIPT_DIR
+# declarations (the scripts that use those keep them), a `read` without -r, and
+# two unquoted `kind-$cluster` context arguments.
+#
+# There is no compose file in this repository, so there is no config step. The
+# scripts talk to a real Docker daemon and real clusters, which is why the gate
+# is static: shellcheck, not a dry run that would need a machine to destroy.
+#
+# On push and pull request, not dispatch-only: the failure mode being prevented
+# is "nobody remembered to run it", and a gate that only runs when someone
+# remembers preserves exactly that condition.
+#
+# `branches: ['**']` IS LOAD-BEARING. A `push` event fires for tag refs as well,
+# so without it this would run a second time on every release tag. `**` matches
+# every branch and excludes tags.
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore: ['**.md']
+  pull_request:
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # shellcheck ships on this image. Every tracked script: these create and
+      # delete clusters, so a quoting mistake is a wildcard aimed at the wrong
+      # one.
+      - name: Shellcheck
+        run: shellcheck $(git ls-files '*.sh')

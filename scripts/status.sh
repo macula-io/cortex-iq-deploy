@@ -17,7 +17,7 @@ fi
 
 # List clusters
 echo -e "${CYAN}Clusters:${NC}"
-kind get clusters | while read cluster; do
+kind get clusters | while read -r cluster; do
     if [[ "$cluster" == macula-* ]]; then
         echo -e "  ${GREEN}✓${NC} $cluster"
     fi
@@ -42,12 +42,12 @@ for i in {1..4}; do
         echo -e "  ${GREEN}✓${NC} $cluster"
 
         # Check if FluxCD is installed
-        kubectl --context kind-$cluster get pods -n flux-system 2>/dev/null > /dev/null && \
+        kubectl --context "kind-$cluster" get pods -n flux-system 2>/dev/null > /dev/null && \
             echo -e "    ${GREEN}✓${NC} FluxCD installed" || \
             echo -e "    ${YELLOW}⚠${NC} FluxCD not installed"
 
         # Check payloads
-        kubectl --context kind-$cluster get pods -n macula-system 2>/dev/null > /dev/null && \
+        kubectl --context "kind-$cluster" get pods -n macula-system 2>/dev/null > /dev/null && \
             echo -e "    ${GREEN}✓${NC} Payloads deployed" || \
             echo -e "    ${YELLOW}⚠${NC} No payloads deployed"
     else

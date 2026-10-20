@@ -185,12 +185,15 @@ wait_for_deployments() {
     -l app=bondy -n macula-hub --timeout=180s || log_error "Bondy not ready"
 
   log_step "Waiting for PostgreSQL (Edge-01)..."
+  kubectl --context kind-macula-edge-01 wait --for=condition=ready pod \
     -l app=postgres -n macula-system --timeout=180s || log_error "PostgreSQL not ready"
 
   log_step "Waiting for Dashboard (Edge-01)..."
+  kubectl --context kind-macula-edge-01 wait --for=condition=ready pod \
     -l app=cortex-iq-dashboard -n macula-system --timeout=300s || log_error "Dashboard not ready"
 
   log_step "Waiting for Homes (Edge-01)..."
+  kubectl --context kind-macula-edge-01 wait --for=condition=ready pod \
     -l app=cortex-iq-homes -n macula-system --timeout=180s || log_error "Homes (edge-01) not ready"
 
   log_step "Waiting for Homes (Edge-02)..."

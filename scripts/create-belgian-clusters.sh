@@ -4,11 +4,8 @@ set -euo pipefail
 # Create Belgian region KinD clusters for Macula Platform
 # Regions: Antwerp, Brabant, East Flanders
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 # Colors
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 RED='\033[0;31m'
 NC='\033[0m'
