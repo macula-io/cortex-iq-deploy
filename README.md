@@ -348,7 +348,6 @@ cd macula-energy-mesh-poc/infrastructure/kind/
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - Complete architecture and mesh topology
 - [DNS_STRATEGY.md](./DNS_STRATEGY.md) - DNS resolution strategy for KinD and beam clusters
 - [base/observability/README.md](./base/observability/README.md) - Prometheus + Grafana monitoring
-- [base/registry/README.md](./base/registry/README.md) - Local Docker registry setup
 
 **External References:**
 - **FluxCD**: https://fluxcd.io/
